@@ -642,6 +642,20 @@
             color: var(--text-secondary);
             margin-bottom: 10px;
         }
+        
+        /* Added for clickable stone IDs */
+        .clickable-stone-id {
+            cursor: pointer;
+            color: var(--primary-accent);
+            transition: all 0.2s ease;
+            text-decoration: underline;
+            font-weight: bold;
+        }
+        
+        .clickable-stone-id:hover {
+            color: var(--tertiary-accent);
+            text-shadow: 0 0 5px var(--primary-accent);
+        }
 
         .stats {
             display: grid;
@@ -2289,7 +2303,7 @@ function closePhotoModal() {
 
                     entry.innerHTML = `
                         <div class="update-content">
-                            <h3><i class="fas fa-broadcast-tower"></i> SPECIMEN ${update.stoneId}</h3>
+                            <h3><i class="fas fa-broadcast-tower"></i> SPECIMEN <span class="clickable-stone-id" onclick="selectStone('${update.stoneId}');">${update.stoneId}</span></h3>
                             <p>${update.message}</p>
                             <p class="timestamp"><i class="fas fa-clock"></i> ${date} <i class="fas fa-calendar-alt" style="margin-left: 10px;"></i> ${time}</p>
                             ${photoHtml}
