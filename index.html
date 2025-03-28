@@ -1606,16 +1606,10 @@
         <!-- Statistics Section -->
         <div class="statistics-section">
             <h2><i class="fas fa-chart-bar"></i> ANALYTICS TERMINAL</h2>
-            <p style="text-align: center; color: var(--text-secondary); margin-bottom: 20px;">Advanced metrics and deep scan analysis of the cosmic stone collection.</p>
-            
-            <!-- Key Stats Grid -->
-            <div class="stats-grid" id="statsGrid">
-                <!-- Stats boxes will be added dynamically -->
-            </div>
             
             <!-- Top Performers Chart -->
             <div class="top-performers">
-                <h3 style="margin-bottom: 10px; text-align: center;">TOP 3 ENERGY SIGNATURES</h3>
+                <h3 style="margin-bottom: 10px; text-align: center;">TOP 5 ENERGY SIGNATURES</h3>
                 <p style="text-align: center; color: var(--text-secondary); margin-bottom: 20px;">Specimens with highest journey frequencies</p>
                 <div class="chart-container" id="topPerformersChart"></div>
             </div>
@@ -2364,7 +2358,7 @@ function closePhotoModal() {
                         const storageRef = storage.ref(`stones/${doc.id}/${doc.id}`);
                         photoUrl = await storageRef.getDownloadURL();
                         hasPhoto = true;
-                        console.log(`Found photo for stone ${doc.id} in Storage`);
+console.log(`Found photo for stone ${doc.id} in Storage`);
                     } catch (err) {
                         // No photo in Storage either
                         hasPhoto = false;
@@ -2391,7 +2385,7 @@ function closePhotoModal() {
             }
         }
 
-        // Create folders based on stone grouping - with separate text lines for "Stones" and range numbers
+// Create folders based on stone grouping - with separate text lines for "Stones" and range numbers
         function createFolders(stones) {
             // Group stones into folders (1-8, 9-16, 17-24, etc.)
             const folderGroups = {};
@@ -2504,24 +2498,39 @@ function closePhotoModal() {
                 
                 console.log(`Successfully loaded ${allStones.length} stone cards`);
                 
-                // Calculate total journeys
-                totalJourneys = allStones.reduce((total, stone) => total + stone.journeyCount, 0);
+                // Calculate total journeys (minus the number of stones)
+                totalJourneys = allStones.reduce((total, stone) => total + stone.journeyCount, 0) - allStones.length;
                 
-                // Check which stones are active this month
-                for (let i = 0; i < sortedDocs.length; i++) {
-                    const doc = sortedDocs[i];
-                    const lastJourneySnapshot = await doc.ref.collection('journeys')
-                        .orderBy('timestamp', 'desc')
-                        .limit(1)
-                        .get();
-                        
-                    if (!lastJourneySnapshot.empty) {
-                        const data = lastJourneySnapshot.docs[0].data();
-                        if (data.timestamp && data.timestamp.toDate().getMonth() === currentMonth) {
-                            activeThisMonth++;
-                        }
-                    }
-                }
+// Check which stones are active this month (excluding stones that only have their creation journey)
+for (let i = 0; i < sortedDocs.length; i++) {
+    const doc = sortedDocs[i];
+    
+    // Get all journeys for this stone in chronological order
+    const allJourneys = await doc.ref.collection('journeys')
+        .orderBy('timestamp', 'asc')
+        .get();
+    
+    // Skip if no journeys or only one journey (just the creation)
+    if (allJourneys.empty || allJourneys.size <= 1) {
+        continue;
+    }
+    
+    // Check if any non-creation journey is from the current month
+    let hasNonCreationJourneyThisMonth = false;
+    
+    for (let j = 1; j < allJourneys.docs.length; j++) {
+        const journeyData = allJourneys.docs[j].data();
+        if (journeyData.timestamp && 
+            journeyData.timestamp.toDate().getMonth() === currentMonth) {
+            hasNonCreationJourneyThisMonth = true;
+            break;
+        }
+    }
+    
+    if (hasNonCreationJourneyThisMonth) {
+        activeThisMonth++;
+    }
+}
 
                 // Update stats
                 document.getElementById('totalStones').textContent = snapshot.size;
@@ -3039,9 +3048,6 @@ function closePhotoModal() {
             showLoading();
             
             try {
-                // Calculate and display key statistics
-                await calculateKeyStats();
-                
                 // Create top performers chart
                 await createTopPerformersChart();
                 
@@ -3049,98 +3055,6 @@ function closePhotoModal() {
                 console.error("Error loading statistics:", error);
             } finally {
                 hideLoading();
-            }
-        }
-        
-        async function calculateKeyStats() {
-            const statsGrid = document.getElementById('statsGrid');
-            statsGrid.innerHTML = '';
-            
-            try {
-                // 1. Total distance traveled by all stones (estimated)
-                // We'll use journey count as a proxy for distance
-                const totalJourneys = allStones.reduce((total, stone) => total + stone.journeyCount, 0);
-                const avgDistance = 5; // Assume average of 5km between handoffs
-                const totalDistance = totalJourneys * avgDistance;
-                
-                // 2. Average journeys per stone
-                const avgJourneys = totalJourneys / allStones.length;
-                
-                // 3. Most active month
-                const monthCounts = await calculateMonthActivity();
-                const mostActiveMonth = Object.entries(monthCounts)
-                    .sort((a, b) => b[1] - a[1])[0];
-                
-                const monthNames = [
-                    'January', 'February', 'March', 'April', 'May', 'June',
-                    'July', 'August', 'September', 'October', 'November', 'December'
-                ];
-                
-                // 4. Percentage of stones with photos
-                const stonesWithPhotos = allStones.filter(stone => stone.hasPhoto).length;
-                const photoPercentage = Math.round((stonesWithPhotos / allStones.length) * 100);
-                
-                // 5. Average journey chain length (consecutive handoffs)
-                // For this we'll use a simplified estimate
-                let maxConsecutiveDays = 0;
-                
-                // 6. Unique locations estimate
-                // We'll use a random number based on journey count as a placeholder
-                // In a real implementation, you'd count actual unique locations from journey data
-                const uniqueLocationsEstimate = Math.min(
-                    Math.round(totalJourneys * 0.7),
-                    totalJourneys
-                );
-                
-                // Create stat boxes
-                const statBoxes = [
-                    {
-                        title: "Total Distance Traveled",
-                        value: `${totalDistance}km`,
-                        subtitle: "Estimated spatial displacement"
-                    },
-                    {
-                        title: "Avg Jumps Per Stone",
-                        value: avgJourneys.toFixed(1),
-                        subtitle: "Quantum transit frequency"
-                    },
-                    {
-                        title: "Most Active Month",
-                        value: monthNames[parseInt(mostActiveMonth[0])],
-                        subtitle: `${mostActiveMonth[1]} quantum jumps`
-                    },
-                    {
-                        title: "Specimens With Images",
-                        value: `${photoPercentage}%`,
-                        subtitle: `${stonesWithPhotos} of ${allStones.length} specimens`
-                    },
-                    {
-                        title: "Unique Locations",
-                        value: uniqueLocationsEstimate,
-                        subtitle: "Estimated spatial coordinates"
-                    },
-                    {
-                        title: "Prime Specimen",
-                        value: `#${await getMostActiveStone()}`,
-                        subtitle: "Highest quantum activity"
-                    }
-                ];
-                
-                // Add stat boxes to the grid
-                statBoxes.forEach(stat => {
-                    const statBox = document.createElement('div');
-                    statBox.className = 'stat-box';
-                    statBox.innerHTML = `
-                        <h3>${stat.title}</h3>
-                        <p class="value">${stat.value}</p>
-                        <p class="subtitle">${stat.subtitle}</p>
-                    `;
-                    statsGrid.appendChild(statBox);
-                });
-                
-            } catch (error) {
-                console.error("Error calculating statistics:", error);
-                statsGrid.innerHTML = '<p>Error loading statistics</p>';
             }
         }
         
@@ -3183,21 +3097,21 @@ function closePhotoModal() {
         // Function to create top performers chart - sci-fi style
         async function createTopPerformersChart() {
             try {
-                // Get top 3 stones by journey count
-                const top3Stones = [...allStones]
+                // Get top 5 stones by journey count
+                const top5Stones = [...allStones]
                     .sort((a, b) => b.journeyCount - a.journeyCount)
-                    .slice(0, 3);
+                    .slice(0, 5);
                 
-                console.log("Top 3 stones:", top3Stones);
+                console.log("Top 5 stones:", top5Stones);
                 
-                if (top3Stones.length === 0) {
+                if (top5Stones.length === 0) {
                     document.getElementById('topPerformersChart').innerHTML = 
                         '<p style="text-align: center; padding: 40px; color: var(--text-secondary);"><i class="fas fa-database" style="font-size: 2em; color: var(--primary-accent); margin-bottom: 15px; display: block;"></i>NO SPECIMEN DATA AVAILABLE FOR ANALYSIS</p>';
                     return;
                 }
                 
                 // Prepare chart data
-                const chartData = top3Stones.map(stone => ({
+                const chartData = top5Stones.map(stone => ({
                     name: `#${stone.id}`,
                     journeys: stone.journeyCount,
                     photoUrl: stone.photoUrl,
