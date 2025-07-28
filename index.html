@@ -1468,6 +1468,40 @@
             background: var(--primary-accent);
             border-radius: 3px;
         }
+        
+        .map-toggle-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .map-toggle-btn {
+            background: rgba(15, 22, 49, 0.7);
+            border: 1px solid var(--primary-accent);
+            padding: 8px 14px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 0.9em;
+            color: var(--text-primary);
+            font-family: 'Exo 2', sans-serif;
+            letter-spacing: 1px;
+        }
+
+        .map-toggle-btn:hover {
+            background: rgba(0, 229, 255, 0.1);
+            transform: translateY(-3px);
+            box-shadow: 0 0 10px rgba(0, 229, 255, 0.3);
+        }
+
+        .map-toggle-btn.active {
+            background: linear-gradient(135deg, var(--primary-accent), var(--tertiary-accent));
+            border-color: transparent;
+            color: var(--primary-dark);
+            font-weight: bold;
+            box-shadow: 0 0 15px rgba(0, 229, 255, 0.4);
+        }
 
         @media (max-width: 768px) {
             .dashboard-grid {
@@ -1581,6 +1615,14 @@
                     <div style="flex: 1;">
                         <h3 style="margin-top: 0; text-align: center;"><i class="fas fa-globe"></i> GLOBAL NETWORK</h3>
                         <div id="allStonesMap" style="height: 400px;"></div>
+                        <div class="map-toggle-buttons" id="allStonesMapToggle">
+                            <button class="map-toggle-btn active" id="toggleCurrentLocations" onclick="toggleAllStonesMapView('current')">
+                                <i class="fas fa-map-marker-alt"></i> CURRENT LOCATIONS
+                            </button>
+                            <button class="map-toggle-btn" id="toggleAllJourneys" onclick="toggleAllStonesMapView('allJourneys')">
+                                <i class="fas fa-wave-square"></i> ALL TRAJECTORIES
+                            </button>
+                        </div>
                     </div>
                 </div>
                 <div class="journey-details" id="journeyDetails"></div>
@@ -1641,6 +1683,8 @@
         let currentFolderId = null;
         let allStones = []; // Store all stones data
         let allStonesMarkers = []; // Store markers for all stones
+        let allStonesMapMode = 'current'; // 'current' or 'allJourneys'
+        let allJourneysLayers = []; // To store the journey polylines
 
         // Loading indicator functions - sci-fi style
         function showLoading() {
@@ -2597,11 +2641,113 @@ for (let i = 0; i < sortedDocs.length; i++) {
             // Load all stones' most recent locations
             loadAllStonesLocations();
         }
+
+        function toggleAllStonesMapView(mode) {
+            if (mode === allStonesMapMode) return; // Do nothing if already in this mode
+
+            allStonesMapMode = mode;
+
+            // Update button styles
+            document.getElementById('toggleCurrentLocations').classList.toggle('active', mode === 'current');
+            document.getElementById('toggleAllJourneys').classList.toggle('active', mode === 'allJourneys');
+
+            // Load the appropriate map view
+            if (mode === 'current') {
+                loadAllStonesLocations();
+            } else {
+                loadAllJourneysOnMap();
+            }
+        }
+
+        const JOURNEY_COLORS = [
+            '#00e5ff', '#ff3860', '#00ff9d', '#ffdd00', 
+            '#9f00ff', '#ff7b00', '#ffffff', '#7cfc00', 
+            '#ff69b4', '#00fa9a', '#ff4500', '#1e90ff'
+        ];
+
+        function generateColorForStone(stoneId) {
+            const numericId = parseInt(stoneId.replace(/\D/g, '')) || 0;
+            return JOURNEY_COLORS[numericId % JOURNEY_COLORS.length];
+        }
+
+        async function loadAllJourneysOnMap() {
+            showLoading();
+            
+            try {
+                // Clear existing markers and layers
+                if (allStonesMarkers.length > 0) {
+                    allStonesMarkers.forEach(marker => allStonesMap.removeLayer(marker));
+                    allStonesMarkers = [];
+                }
+                if (allJourneysLayers.length > 0) {
+                    allJourneysLayers.forEach(layer => allStonesMap.removeLayer(layer));
+                    allJourneysLayers = [];
+                }
+
+                const bounds = L.latLngBounds();
+                const journeyPromises = [];
+
+                for (const stone of allStones) {
+                    journeyPromises.push(
+                        db.collection('stones').doc(stone.id).collection('journeys').orderBy('timestamp', 'asc').get()
+                        .then(async (journeysSnapshot) => {
+                            const coordinates = [];
+                            for (const doc of journeysSnapshot.docs) {
+                                const data = doc.data();
+                                let coords = data.coordinates;
+                                if (!coords && data.location) {
+                                    coords = await getCoordinates(data.location);
+                                }
+                                if (coords) {
+                                    const latLng = [coords.lat, coords.lon];
+                                    coordinates.push(latLng);
+                                    bounds.extend(latLng);
+                                }
+                            }
+                            return { stoneId: stone.id, coordinates: coordinates };
+                        })
+                    );
+                }
+
+                const allPaths = await Promise.all(journeyPromises);
+
+                allPaths.forEach(path => {
+                    if (path.coordinates.length > 1) {
+                        const color = generateColorForStone(path.stoneId);
+                        const polyline = L.polyline(path.coordinates, {
+                            color: color,
+                            weight: 2.5,
+                            opacity: 0.8
+                        }).addTo(allStonesMap);
+                        polyline.bindPopup(`Trajectory for Specimen #${path.stoneId}`);
+                        allJourneysLayers.push(polyline);
+                    }
+                });
+
+                if (bounds.isValid()) {
+                    allStonesMap.fitBounds(bounds, { padding: [30, 30] });
+                } else {
+                    // If no journeys, reset view
+                    allStonesMap.setView([0, 0], 2);
+                }
+
+            } catch (error) {
+                console.error("Error loading all journeys on map:", error);
+            } finally {
+                hideLoading();
+            }
+        }
         
         async function loadAllStonesLocations() {
             showLoading();
             
             try {
+                // Clear existing journey lines if any
+                if (allJourneysLayers.length > 0) {
+                    allJourneysLayers.forEach(layer => allStonesMap.removeLayer(layer));
+                    allJourneysLayers = [];
+                }
+
                 // Clear existing markers
                 if (allStonesMarkers.length > 0) {
                     allStonesMarkers.forEach(marker => {
